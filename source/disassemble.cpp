@@ -52,7 +52,7 @@ class Disassembler {
       : print_(spvIsInBitfield(SPV_BINARY_TO_TEXT_OPTION_PRINT, options)),
         text_(),
         out_(print_ ? out_stream() : out_stream(text_)),
-        instruction_disassembler_(grammar, out_.get(), options, name_mapper),
+        instruction_disassembler_(grammar, out_.get(), options, name_mapper, spvIsInBitfield(SPV_BINARY_TO_TEXT_OPTION_FORCE_UNKNOWN, options)),
         header_(!spvIsInBitfield(SPV_BINARY_TO_TEXT_OPTION_NO_HEADER, options)),
         byte_offset_(0) {}
 
@@ -201,7 +201,8 @@ namespace disassemble {
 InstructionDisassembler::InstructionDisassembler(const AssemblyGrammar& grammar,
                                                  std::ostream& stream,
                                                  uint32_t options,
-                                                 NameMapper name_mapper)
+                                                 NameMapper name_mapper,
+                                                 bool force_output)
     : grammar_(grammar),
       stream_(stream),
       print_(spvIsInBitfield(SPV_BINARY_TO_TEXT_OPTION_PRINT, options)),
@@ -212,7 +213,7 @@ InstructionDisassembler::InstructionDisassembler(const AssemblyGrammar& grammar,
       comment_(spvIsInBitfield(SPV_BINARY_TO_TEXT_OPTION_COMMENT, options)),
       show_byte_offset_(
           spvIsInBitfield(SPV_BINARY_TO_TEXT_OPTION_SHOW_BYTE_OFFSET, options)),
-      name_mapper_(std::move(name_mapper)) {}
+      name_mapper_(std::move(name_mapper)), force_output_(force_output) {}
 
 void InstructionDisassembler::EmitHeaderSpirv() { stream_ << "; SPIR-V\n"; }
 
@@ -258,7 +259,15 @@ void InstructionDisassembler::EmitInstruction(
     stream_ << std::string(indent_, ' ');
   }
 
-  stream_ << "Op" << spvOpcodeString(opcode);
+  const char* OpCodeName = spvOpcodeString(opcode);
+  stream_ << "Op";
+  if (OpCodeName)
+    stream_ << OpCodeName;
+  else {
+    SetRed();
+    stream_ << ":" << inst.opcode;
+    ResetColor();
+  }
 
   for (uint16_t i = 0; i < inst.num_operands; i++) {
     const spv_operand_type_t type = inst.operands[i].type;
@@ -413,9 +422,15 @@ void InstructionDisassembler::EmitOperand(const spv_parsed_instruction_t& inst,
     case SPV_OPERAND_TYPE_QUANTIZATION_MODES:
     case SPV_OPERAND_TYPE_OVERFLOW_MODES: {
       spv_operand_desc entry;
-      if (grammar_.lookupOperand(operand.type, word, &entry))
-        assert(false && "should have caught this earlier");
-      stream_ << entry->name;
+      if (grammar_.lookupOperand(operand.type, word, &entry)) {
+        // FIXME: log error ?
+        if (force_output_)
+          stream_ << word;
+        else
+          assert(false && "should have caught this earlier");
+      }
+      else
+        stream_ << entry->name;
     } break;
     case SPV_OPERAND_TYPE_FP_FAST_MATH_MODE:
     case SPV_OPERAND_TYPE_FUNCTION_CONTROL:
@@ -556,11 +571,20 @@ spv_result_t spvBinaryToText(const spv_const_context context,
 
   // Now disassemble!
   spvtools::Disassembler disassembler(grammar, options, name_mapper);
-  if (auto error =
-          spvBinaryParse(&hijack_context, &disassembler, code, wordCount,
-                         spvtools::DisassembleHeader,
-                         spvtools::DisassembleInstruction, pDiagnostic)) {
-    return error;
+  if (options & SPV_BINARY_TO_TEXT_OPTION_FORCE_UNKNOWN) {
+    if (auto error = spvBinaryParseForceUnknown(
+            &hijack_context, &disassembler, code, wordCount,
+            spvtools::DisassembleHeader, spvtools::DisassembleInstruction,
+            pDiagnostic)) {
+      return error;
+    }
+  } else {
+    if (auto error =
+            spvBinaryParse(&hijack_context, &disassembler, code, wordCount,
+                           spvtools::DisassembleHeader,
+                           spvtools::DisassembleInstruction, pDiagnostic)) {
+      return error;
+    }
   }
 
   return disassembler.SaveTextResult(pText);

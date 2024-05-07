@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 
 #include "source/instruction.h"
 #include "source/macro.h"
@@ -162,6 +163,8 @@ spv_result_t spvOpcodeTableValueLookup(spv_target_env env,
       return SPV_SUCCESS;
     }
   }
+  std::memset(pEntry, 0, sizeof(*pEntry));
+  //pEntry->opcode = static_cast<>();
 
   return SPV_ERROR_INVALID_LOOKUP;
 }
@@ -200,8 +203,7 @@ const char* spvOpcodeString(const uint32_t opcode) {
     return it->name;
   }
 
-  assert(0 && "Unreachable!");
-  return "unknown";
+  return nullptr;
 }
 
 const char* spvOpcodeString(const spv::Op opcode) {

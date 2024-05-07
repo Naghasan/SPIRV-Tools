@@ -382,6 +382,8 @@ typedef enum spv_binary_to_text_options_t {
   SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES = SPV_BIT(6),
   // Add some comments to the generated assembly
   SPV_BINARY_TO_TEXT_OPTION_COMMENT = SPV_BIT(7),
+  // Don't fail on unknown instructions
+  SPV_BINARY_TO_TEXT_OPTION_FORCE_UNKNOWN = SPV_BIT(8),
   SPV_FORCE_32_BIT_ENUM(spv_binary_to_text_options_t)
 } spv_binary_to_text_options_t;
 
@@ -943,6 +945,10 @@ SPIRV_TOOLS_EXPORT spv_result_t spvBinaryParse(
     const size_t num_words, spv_parsed_header_fn_t parse_header,
     spv_parsed_instruction_fn_t parse_instruction, spv_diagnostic* diagnostic);
 
+SPIRV_TOOLS_EXPORT spv_result_t spvBinaryParseForceUnknown(
+    const spv_const_context context, void* user_data, const uint32_t* words,
+    const size_t num_words, spv_parsed_header_fn_t parse_header,
+    spv_parsed_instruction_fn_t parse_instruction, spv_diagnostic* diagnostic);
 // The optimizer interface.
 
 // A pointer to a function that accepts a log message from an optimizer.

@@ -81,12 +81,14 @@ class Parser {
   // The user_data value is provided to the callbacks as context.
   Parser(const spv_const_context context, void* user_data,
          spv_parsed_header_fn_t parsed_header_fn,
-         spv_parsed_instruction_fn_t parsed_instruction_fn)
+         spv_parsed_instruction_fn_t parsed_instruction_fn,
+         bool force_unknown = false)
       : grammar_(context),
         consumer_(context->consumer),
         user_data_(user_data),
         parsed_header_fn_(parsed_header_fn),
-        parsed_instruction_fn_(parsed_instruction_fn) {}
+        parsed_instruction_fn_(parsed_instruction_fn),
+        force_unknown_(force_unknown) {}
 
   // Parses the specified binary SPIR-V module, issuing callbacks on a parsed
   // header and for each parsed instruction.  Returns SPV_SUCCESS on success.
@@ -184,6 +186,7 @@ class Parser {
   const spv_parsed_header_fn_t parsed_header_fn_;  // Parsed header callback
   const spv_parsed_instruction_fn_t
       parsed_instruction_fn_;  // Parsed instruction callback
+  const bool force_unknown_;   // Don't fail on unknown values.
 
   // Describes the format of a typed literal number.
   struct NumberType {
@@ -318,7 +321,9 @@ spv_result_t Parser::parseInstruction() {
                         << inst_word_count;
   }
   spv_opcode_desc opcode_desc;
-  if (grammar_.lookupOpcode(static_cast<spv::Op>(inst.opcode), &opcode_desc))
+  spv_result_t lookup_res =
+      grammar_.lookupOpcode(static_cast<spv::Op>(inst.opcode), &opcode_desc);
+  if (lookup_res && !(force_unknown_ && lookup_res == SPV_ERROR_INVALID_LOOKUP))
     return diagnostic() << "Invalid opcode: " << inst.opcode;
 
   // Advance past the opcode word.  But remember the of the start
@@ -334,9 +339,16 @@ spv_result_t Parser::parseInstruction() {
   // ExecutionMode), or for extended instructions that may have their
   // own operands depending on the selected extended instruction.
   _.expected_operands.clear();
-  for (auto i = 0; i < opcode_desc->numTypes; i++)
-    _.expected_operands.push_back(
-        opcode_desc->operandTypes[opcode_desc->numTypes - i - 1]);
+  if (lookup_res == SPV_SUCCESS) {
+    for (auto i = 0; i < opcode_desc->numTypes; i++)
+      _.expected_operands.push_back(
+          opcode_desc->operandTypes[opcode_desc->numTypes - i - 1]);
+  } else {
+    // The lookup failed so we have no grammar information.
+    // Treat all operand as integer literal to provide a raw display.
+    for (auto i = 1; i < inst_word_count; i++)
+      _.expected_operands.push_back(SPV_OPERAND_TYPE_LITERAL_INTEGER);
+  }
 
   while (_.word_index < inst_offset + inst_word_count) {
     const uint16_t inst_word_index = uint16_t(_.word_index - inst_offset);
@@ -354,7 +366,7 @@ spv_result_t Parser::parseInstruction() {
 
     if (auto error =
             parseOperand(inst_offset, &inst, type, &_.endian_converted_words,
-                         &_.operands, &_.expected_operands)) {
+                        &_.operands, &_.expected_operands)) {
       return error;
     }
   }
@@ -682,12 +694,20 @@ spv_result_t Parser::parseOperand(size_t inst_offset,
 
       spv_operand_desc entry;
       if (grammar_.lookupOperand(type, word, &entry)) {
-        return diagnostic()
-               << "Invalid " << spvOperandTypeStr(parsed_operand.type)
-               << " operand: " << word;
+        // FIXME: We should get the operandTypes from the type but ignoring the value.
+        if (force_unknown_) {
+          //expected_operands->push_back(SPV_OPERAND_TYPE_LITERAL_INTEGER);
+        }
+        else {
+          return diagnostic()
+                 << "Invalid " << spvOperandTypeStr(parsed_operand.type)
+                 << " operand: " << word;
+        }
       }
-      // Prepare to accept operands to this operand, if needed.
-      spvPushOperandTypes(entry->operandTypes, expected_operands);
+      else {
+        // Prepare to accept operands to this operand, if needed.
+        spvPushOperandTypes(entry->operandTypes, expected_operands);
+      }
     } break;
 
     case SPV_OPERAND_TYPE_SOURCE_LANGUAGE: {
@@ -848,6 +868,20 @@ spv_result_t spvBinaryParse(const spv_const_context context, void* user_data,
     spvtools::UseDiagnosticAsMessageConsumer(&hijack_context, diagnostic);
   }
   Parser parser(&hijack_context, user_data, parsed_header, parsed_instruction);
+  return parser.parse(code, num_words, diagnostic);
+}
+
+spv_result_t spvBinaryParseForceUnknown(const spv_const_context context, void* user_data,
+                            const uint32_t* code, const size_t num_words,
+                            spv_parsed_header_fn_t parsed_header,
+                            spv_parsed_instruction_fn_t parsed_instruction,
+                            spv_diagnostic* diagnostic) {
+  spv_context_t hijack_context = *context;
+  if (diagnostic) {
+    *diagnostic = nullptr;
+    spvtools::UseDiagnosticAsMessageConsumer(&hijack_context, diagnostic);
+  }
+  Parser parser(&hijack_context, user_data, parsed_header, parsed_instruction, /*force_unknown=*/true);
   return parser.parse(code, num_words, diagnostic);
 }
 

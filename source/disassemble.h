@@ -45,7 +45,7 @@ namespace disassemble {
 class InstructionDisassembler {
  public:
   InstructionDisassembler(const AssemblyGrammar& grammar, std::ostream& stream,
-                          uint32_t options, NameMapper name_mapper);
+                          uint32_t options, NameMapper name_mapper, bool force_ouput = false);
 
   // Emits the assembly header for the module.
   void EmitHeaderSpirv();
@@ -90,6 +90,7 @@ class InstructionDisassembler {
   const int comment_;  // Should we comment the source
   const bool show_byte_offset_;  // Should we print byte offset, in hex?
   spvtools::NameMapper name_mapper_;
+  bool force_output_; // Force disassemble
 };
 
 }  // namespace disassemble

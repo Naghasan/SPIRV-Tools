@@ -157,6 +157,7 @@ bool spvOpcodeIsAccessChain(spv::Op opcode);
 bool spvOpcodeIsBit(spv::Op opcode);
 
 // Gets the name of an instruction, without the "Op" prefix.
+// Returns a nullptr in case of lookup failure.
 const char* spvOpcodeString(const spv::Op opcode);
 
 #endif  // SOURCE_OPCODE_H_

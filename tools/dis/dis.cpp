@@ -57,6 +57,8 @@ Options:
   --offsets       Show byte offsets for each instruction.
 
   --comment       Add comments to make reading easier
+
+  --force         Force disassembly even in the presence of unknown instructions or enums.
 )";
 
 // clang-format off
@@ -71,6 +73,7 @@ FLAG_LONG_bool   (no_header, /* default_value= */ false, /* required= */ false);
 FLAG_LONG_bool   (raw_id,    /* default_value= */ false, /* required= */ false);
 FLAG_LONG_bool   (offsets,   /* default_value= */ false, /* required= */ false);
 FLAG_LONG_bool   (comment,   /* default_value= */ false, /* required= */ false);
+FLAG_LONG_bool   (force,     /* default_value= */ false, /* required= */ false);
 // clang-format on
 
 static const auto kDefaultEnvironment = SPV_ENV_UNIVERSAL_1_5;
@@ -121,6 +124,8 @@ int main(int, const char** argv) {
     options |= SPV_BINARY_TO_TEXT_OPTION_FRIENDLY_NAMES;
 
   if (flags::comment.value()) options |= SPV_BINARY_TO_TEXT_OPTION_COMMENT;
+
+  if (flags::force.value()) options |= SPV_BINARY_TO_TEXT_OPTION_FORCE_UNKNOWN;
 
   if (flags::o.value() == "-") {
     // Print to standard output.
